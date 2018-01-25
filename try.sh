@@ -64,19 +64,29 @@ rm $RES $RES1 $RES2  # ...unless we are still debugging.
 
 # So now we have
 # 1. The block count of the second partition &
-# 2. the size of each of these blocks:
-# These provide us with the size of the second partition:
+# 2. the size of each of these blocks...
+# ... allowing us to calculate the size of the second partition.
+# We have also captured the beginning block of the second partition so
+# we can then calculate its ending block.
 declare -i P2SIZE=COUNT*SIZE
 declare -i P2_lastSECTOR
 P2_lastSECTOR=(P1_1stSECTOR-1)+P2SIZE/512
 declare -i TRUNC_SIZE
 TRUNC_SIZE=(P2_lastSECTOR+1)*512+MYSTERY
-echo $P2_lastSECTOR
-echo $TRUNC_SIZE
 
-printf "Set the second partition first sector to %d\n" \
-$P2_1stSECTOR
-printf "and the second partition last sector to %d\n" \
-$P2_lastSECTOR
-printf "...then sudo truncate --size=%d %s\n" $TRUNC_SIZE $SC
+
+printf "\nStill TO-DO:\n"
+echo "1. run sudo fdisk $SC to set the 2nd partition's"
+printf "first sector to %d,\n" $P2_1stSECTOR
+printf "and last sector to %d\n" $P2_lastSECTOR
+printf "2. $ sudo truncate --size=%d %s\n" $TRUNC_SIZE $SC
+echo "3. After truncation, it would be a good idea to"
+echo "rename $SC to something more appropriate:"
+echo " $ mv $SC shrunk.img"
+echo '4. the script `$ sudo ./load-shrunk.sh` is provided'
+echo "to help get the image back onto an SD card. Look it"
+echo "over before using!!"
+
+echo
+echo "Hope this was successful and helpful. Have a nice day! :-)"
 

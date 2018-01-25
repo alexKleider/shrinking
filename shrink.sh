@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # File: shrink.sh
 
 ### First be sure the following is what you want:
@@ -91,7 +93,7 @@ exec 5< $RES1; read LINE <&5; declare -i P1_1stSECTOR=$LINE
 exec 6< $RES2; read LINE <&6; declare -i P2_1stSECTOR=$LINE
 
 printf "Beginning (sh) sectors are %d and %d.\n" \
-$P1_1stSECTOR $P2_1stSECTOR
+P1_1stSECTOR $P2_1stSECTOR
 echo "We don't need the first sector of the first partition."
 
 # We no longer have need of our temporary files...
