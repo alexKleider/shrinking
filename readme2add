@@ -1,0 +1,15 @@
+Tue Jan 23 10:06:13 PST 2018
+
+This SD Card contains raspbian
+(2017-11-29-raspbian-stretch-lite.img)
+which has been modified 
+(see https://github.com/alexKleider/phInfo)
+to act as a Pathagar Book Server.
+In addition, a few books have been provided
+as content, curated by Sameer Verma.
+
+The file system may still be in a shrunken state
+so it would be advisable to run
+    sudo raspi-config
+and expand the file system.
+
