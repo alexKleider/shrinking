@@ -24,7 +24,7 @@ declare -i MYSTERY=14888
 # needed when shrinking.  If anyone knows why they are needed, please
 # let me know!
 
-DATE=`date`
+TIME="`date '+%T'`"
 
 echo "Enable loopback (if not already enabled...)"
 modprobe loop
@@ -38,13 +38,12 @@ echo " => $LOOPDEV"
 PARTITION=${LOOPDEV}p2
 echo "... and the second partition is $PARTITION"
 
-DATE=`date`
+BEGIN_COPY="`date '+%T'`"
 echo "Copy $SRC to $SC..."
 cp $SRC $SC
 echo " ... to leave original undisturbed."
-printf "Copy began %s" $DATE
-DATE=`date`
-printf " and ended %s" $DATE
+printf "Copy began %s\n" $BEGIN_COPY
+printf " and ended %s\n" "`date '+%T'`"
 
 echo "Create a device for the image..."
 losetup $LOOPDEV $SC
@@ -110,7 +109,13 @@ P2_lastSECTOR=(P1_1stSECTOR-1)+P2SIZE/512
 declare -i TRUNC_SIZE
 TRUNC_SIZE=(P2_lastSECTOR+1)*512+MYSTERY
 
-echo "Still TO-DO:"
+# loopback device no longer needed.
+losetup -d $LOOPDEV
+
+printf "\nScript began      %s\n" $TIME
+printf "... and completed %s\n" "`date '+%T'`"
+
+printf "\nStill TO-DO:\n"
 echo "1. run sudo fdisk $SC to set the 2nd partition's"
 printf "first sector to %d,\n" $P2_1stSECTOR
 printf "and last sector to %d\n" $P2_lastSECTOR
@@ -118,15 +123,12 @@ printf "2. $ sudo truncate --size=%d %s\n" $TRUNC_SIZE $SC
 echo "3. After truncation, it would be a good idea to"
 echo "rename $SC to something more appropriate:"
 echo " $ mv $SC shrunk.img"
-echo "4. the script `$ sudo ./load-shrunk.sh` is provided"
+echo '4. the script `$ sudo ./load-shrunk.sh` is provided'
 echo "to help get the image back onto an SD card. Look it"
 echo "over before using!!"
 
-# loopback device no longer needed.
-losetup -d $LOOPDEV
-
-printf "Script began      %s\n" $DATE
-printf "... and completed %s\n" `date` 
+echo
+echo "Hope this was successful and helpful. Have a nice day! :-)"
 
 # Notes used during development:
 

@@ -4,6 +4,11 @@
 
 # This script must be executed (or sourced) with root privileges.
 
+# It was written to check feasability of letting a script
+# calculate numbers needed for the fdisk partition shrinkage
+# and subsequent truncation of the image.
+# This code has been incorporated into shrink.sh
+
 # Discovers what we need to know to shrink an image.
 # We assume the image contains two partitions and
 # we are trying to shrink the second of these which
@@ -14,6 +19,7 @@ DEV="/dev/sdc"
 # DEV="/dev/loop0"
 PARTITION=${DEV}2
 # PARTITION=${DEV}p2
+
 declare -i MYSTERY=14888
 # The "MYSTERY" integer is the 'extra' number of bytes that seem to be
 # needed when shrinking.  If anyone knows why they are needed, please
