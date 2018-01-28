@@ -20,6 +20,8 @@ _WITHOUT_ parameters:
 Expects the output of the `fdisk` command (see above) to come in on
 stdin. Output (on stdout) can be read by the calling shell script as
 a two integer array.
+NOTE:
+If values returned are '111' &/or '2222', there's been an error!
 """
 
 import sys
@@ -64,7 +66,18 @@ else:
         p1sector = p2sector
         try:
             p2sector = line_array[1]
+#           print("2nd word is: {}".format(p2sector),
+#               file=sys.stderr)
         except IndexError:
             p2sector = ''
+    try:
+        p1sector = int(p1sector)
+    except ValueError:
+        p1sector = "111"
+    try:
+        p2sector = int(p2sector)
+    except ValueError:
+        p2sector = "2222"
+        
     print('({} {})'.format(p1sector, p2sector))
 

@@ -5,8 +5,13 @@
 ### First be sure the following is what you want:
 ### Especially the first one!!!
 
-export SRC="/Downloads/ph-w-books2shrink.img"  # source image
-export SC="/Downloads/shrink-candidate.img"  # sacrificial copy
+declare SRC="/Downloads/ph-w-books2shrink.img"  # source image
+declare SC="/Downloads/shrink-candidate.img"  # sacrificial copy
+declare SHRUNK="/Downloads/shrunk.img"  # name for end product
+
+declare DATESTAMP="`date '+%y%m%d%H%M'`"
+declare TODO="todo-${DATESTAMP}.txt"
+declare LOG="calc-${DATESTAMP}.py"
 
 # Usage:
 #   sudo ./shrink.sh  # takes <4 minutes (on my machine)
@@ -21,12 +26,26 @@ export SC="/Downloads/shrink-candidate.img"  # sacrificial copy
 # file system- the file readme2add is provided as a template.
 # Be sure the partitions are all unmounted before the `dd`.
 
-declare -i MYSTERY=14888
-# The "MYSTERY" integer is the 'extra' number of bytes that seem to be
-# needed when shrinking.  If anyone knows why they are needed, please
-# let me know!
+# Instructions as to what has still to be done after the script ends
+# are provided to stdout and to a file assigned to the TODO variable.
+# Change the name of that file as you see fit (next line.)
 
-TIME="`date '+%T'`"
+declare -i MYSTERY
+MYSTERY=0   # to check by how much we are short.
+# MYSTERY=5505024  # ok jan 26, 07
+# The "MYSTERY" integer was initially introduced when I was getting
+# a 'dmesg' report that there was a mismatch of logical blocks. This
+# problem seems to have gone away.  Leaving this in the code in case
+# of a recurrence.
+# Still unexplained is why 'dmesg' reports:
+# "EXT4-fs (sdc2): mounted filesystem with ordered data mode. \
+# Opts: (null)"
+
+BEGINTIME="`date '+%y-%m-%d %H:%M'`"
+
+printf \
+"\n\n#####\nScript: shrink.sh  Beginning: %s\n#####\n" \
+"$BEGINTIME" | tee -a $TODO
 
 echo "Enable loopback (if not already enabled...)"
 modprobe loop
@@ -36,46 +55,31 @@ losetup -D
 
 echo "Request a new/free loopback device..."
 LOOPDEV=`losetup -f`  # Expect it to be /dev/loop0
-echo " => $LOOPDEV"
 PARTITION=${LOOPDEV}p2
-echo "... and the second partition is $PARTITION"
+printf " => %s; its 2nd partition is %s.\n" "$LOOPDEV" "$PARTITION"
 
-BEGIN_COPY="`date '+%T'`"
-echo "Copy $SRC to $SC..."
+BEGIN_COPY="`date '+%y-%m-%d %H:%M'`"
+printf "Copy %s to %s...\n...starting at %s (expect 3+minutes)...\n" \
+"$SRC"  "$SC" "${BEGIN_COPY}"
+# ... to leave original undisturbed.
 cp $SRC $SC
-echo " ... to leave original undisturbed."
-printf "Copy began %s\n" $BEGIN_COPY
-printf " and ended %s\n" "`date '+%T'`"
+printf "\nCopy completed at %s\n" "`date '+%y-%m-%d %H:%M'`"
+printf "..having begun at %s\n" "$BEGIN_COPY"
 
 echo "Create a device for the image..."
 losetup $LOOPDEV $SC
 
 echo "Ask kernel to load the partitions that are on the image..."
 partprobe $LOOPDEV
-echo "=> ${LOOPDEV}p1 & ${LOOPDEV}p2 (provides access to partitions)"
+printf "... partitions are %sp1 & %sp2\n" \
+"${LOOPDEV}" "${LOOPDEV}" 
 
 echo "resize2fs demands fsck first..."
-fsck.ext4 -f $PARTITION
+fsck.ext4 -f $PARTITION #  | /dev/null
+echo "... finished fsck."
 echo "resize partition to minimum size..."
-resize2fs -M $PARTITION
-
-# Prepare temporary files for fact gathering using Python:
-RES="sh.tmp"
-RES1="py1.tmp"
-RES2="py2.tmp"
-
-# Part ONE: use dumpe2fs to get the size of our 2nd partition:
-##echo "Use dumpe2fs to get block count and size of 2nd partition..."
-##dumpe2fs -h ${LOOPDEV}p2 | grep -e "Block count" -e "Block size" > $RES
-# The result goes into a temporary file to be parsed...
-# ...by the next command: 
-##./getblockcount.py $RES $RES1 $RES2
-# Takes as input content of the $HRES file and puts the block count
-# and the block size into the $RES1 and $RES2 files respectively.
-
-# We now collect those values into integer variables:
-##exec 3< $RES1; read LINE <&3; declare -i COUNT=$LINE
-##exec 4< $RES2; read LINE <&4; declare -i SIZE=$LINE
+resize2fs -M $PARTITION #  | /dev/null
+echo "... finished resize2fs."
 
 # Part ONE (V2):
 declare -a DATA=`dumpe2fs -h $PARTITION | \
@@ -83,83 +87,124 @@ declare -a DATA=`dumpe2fs -h $PARTITION | \
     ./getblockcount.py`
 declare -i COUNT=${DATA[0]}
 declare -i SIZE=${DATA[1]}
+declare -i P2SIZE=COUNT*SIZE
 
 # Progress report:
-printf "Count (sh) is %d, and size is %d.\n" $COUNT $SIZE
-
-
-# Part TWO: get the starting blocks of each of the partitions:
-##echo "fdisk -l to collect partition data..."
-##fdisk -l $LOOPDEV > $RES
-# The results are again dumped into a temporary file
-# to be parsed by the next command:
-##./getstartsectors.py $RES $RES1 $RES2
-
-# As before, We collect those values into integer variables:
-##exec 5< $RES1; read LINE <&5; declare -i P1_1stSECTOR=$LINE
-##exec 6< $RES2; read LINE <&6; declare -i P2_1stSECTOR=$LINE
+printf \
+"The size of Partition 2 is (%d * %d) %d bytes.\n" \
+"$COUNT" "$SIZE" "$P2SIZE" | tee -a $TODO
 
 # Part TWO (V2): get the starting blocks of each of the partitions:
 echo "fdisk -l to list partitions..."
-declare -a DATA=`fdisk -l $DEV | ./getstartsectors.py`
+declare -a DATA=`fdisk -l $LOOPDEV | ./getstartsectors.py`
 declare -i P1_1stSECTOR=${DATA[0]}
 declare -i P2_1stSECTOR=${DATA[1]}
 
 printf "Beginning (sh) sectors are %d and %d.\n" \
-P1_1stSECTOR $P2_1stSECTOR
+$P1_1stSECTOR $P2_1stSECTOR
 echo "We don't need the first sector of the first partition."
-
-# We no longer have need of our temporary files...
-if test -f $RES ; then
-    rm $RES $RES1 $RES2  # ...unless we are still debugging.
-fi
 
 # So now we have
 # 1. The block count of the second partition &
 # 2. the size of each of these blocks...
-# ... allowing us to calculate the size of the second partition.
-# We have also captured the beginning block of the second partition so
-# we can then calculate its ending block.
-declare -i P2SIZE=COUNT*SIZE
-declare -i P2_lastSECTOR
-P2_lastSECTOR=(P1_1stSECTOR-1)+P2SIZE/512
-declare -i TRUNC_SIZE
-TRUNC_SIZE=(P2_lastSECTOR+1)*512+MYSTERY
+# ... allowing us to calculate the size of the 2nd partition.
+# We have also captured the beginning block of the second
+# partition so we can then calculate its ending block.
+
+declare -i P2_lastSECTOR=(P2_1stSECTOR-1)+P2SIZE/512
+
+printf \
+"Set the ending sector of the 2nd partition to %d.\n" \
+"$P2_lastSECTOR" | tee -a $TODO
+
+declare -i TRUNC_SIZE=(P2_lastSECTOR+1)*512+MYSTERY
+
 
 # loopback device no longer needed.
 losetup -d $LOOPDEV
 
-printf "\nScript began      %s\n" $TIME
-printf "... and completed %s\n" "`date '+%T'`"
+printf "\nScript completed at %s\n" "`date '+%y-%m-%d %H:%M'`"
+printf   "... having begun at %s\n" "$BEGINTIME"
 
-printf "\nStill TO-DO:\n"
-echo "1. run sudo fdisk $SC to set the 2nd partition's"
-printf "first sector to %d,\n" $P2_1stSECTOR
-printf "and last sector to %d\n" $P2_lastSECTOR
-printf "2. $ sudo truncate --size=%d %s\n" $TRUNC_SIZE $SC
-echo "3. After truncation, it would be a good idea to"
-echo "rename $SC to something more appropriate:"
-echo " $ mv $SC shrunk.img"
-echo '4. the script `$ sudo ./load-shrunk.sh` is provided'
-echo "to help get the image back onto an SD card. Look it"
-echo "over before using!!"
+printf "\nStill TO-DO:\n" | tee -a $TODO
 
-echo
-echo "Hope this was successful and helpful. Have a nice day! :-)"
+printf \
+"\n1. run sudo fdisk %s\n" $SC | tee -a $TODO
+printf \
+"(Be sure the last number in each of next 2 lines is the same.)" \
+ | tee -a $TODO
+printf \
+"  a. Check that the beginning sectors are %d and %d.\n" \
+"$P1_1stSECTOR" "$P2_1stSECTOR" | tee -a $TODO
+printf \
+"  b. Reset the 2nd partition's beginning sector to %d.\n" \
+"$P2_1stSECTOR" | tee -a $TODO
+printf \
+"  c. Set its last sector to %d\n" $P2_lastSECTOR | tee -a $TODO
 
-# Notes used during development:
 
-# `sudo fdisk $SC` to shrink partition:
-# $[(94208-1) + 680712 * 4096 / 512] => 5539903
-# $[(94208-1) + 682573 * 4096 / 512] => 5554791
-# $[(94208-1) + 684975 * 4096 / 512] => 5574007
+printf "\n2. %s ...\n" "$SC" | tee -a $TODO
+printf \
+".. was created by root so chanage its ownership:\n" | tee -a $TODO
+printf "   $ sudo chown \$USER:\$USER %s\n" "$SC" | tee -a $TODO
 
-# and shrink the image:
-# `sudo truncate --size=$[(5539903+1)*512] $SC`
-# `sudo truncate --size=$[(5554791+1)*512] $SC`
-# `sudo truncate --size=$[(5554791+1)*512+14888] $SC`
-# `sudo truncate --size=$[(5574007+1)*512+14888] $SC`
-# 14888 is the mystery number of extra bytes needed.
-# For Rachel image:
-# will try 'sudo truncate --size=$[(117856945+1)*512+14888] $SC`
+printf \
+"\n3. $ truncate --size=%d %s\n" \
+"$TRUNC_SIZE" "$SC" | tee -a $TODO
+
+printf \
+"\n4. After truncation, it would be a good idea to\n" | tee -a $TODO
+printf \
+"rename %s to something more appropriate:\n" "$SC" | tee -a $TODO
+printf \
+"   $ mv %s %s\n" "$SC" "$SHRUNK" | tee -a $TODO
+
+printf "\n5. Sometimes the partition auto mounts ...\n" \
+| tee -a $TODO
+printf \
+"   $ sudo umount %s\n" "$PARTITION" | tee -a $TODO
+
+printf \
+"\n6. the script $ sudo ./load-shrunk.sh is provided\n" | tee -a $TODO
+printf \
+"to help get the image back onto an SD card. Look it\n" | tee -a $TODO
+printf \
+"over before using!!\n" | tee -a $TODO
+printf \
+"\nHope this was successful and helpful. Have a nice day! :-)\n"
+printf \
+"PS: Check out %s for a synopsis. (Also %s.)\n" "$TODO" "$LOG"
+printf \
+"PPS: Direct comments, criticisms, &c. to alex@kleider.ca\n"
+
+
+TIMESTAMP="`date '+%y-%m-%d %H:%M'`"
+echo "" >> "$LOG"
+echo "" >> "$LOG"
+
+echo "# Python code- dated $TIMESTAMP" >> "$LOG"
+echo "" >> "$LOG"
+echo "blk_count = $SIZE" >> "$LOG"
+echo "blk_size = $COUNT" >> "$LOG"
+echo "p2size = blk_count * blk_size" >> "$LOG"
+echo "p1first = $P1_1stSECTOR" >> "$LOG"
+echo "p2first = $P2_1stSECTOR" >> "$LOG"
+echo "p2last = (p2first -1) + p2size / 512" >> "$LOG"
+echo "mystery = $MYSTERY" >> "$LOG"
+echo "size = (p2last +1) * 512 + mystery" >> "$LOG"
+
+echo 'print("""' >> "$LOG"
+echo 'Regarding the second partition:' >> "$LOG"
+echo '         Size:{:11.0f}' >> "$LOG"
+echo '    Add extra:{:11.0f}' >> "$LOG"
+echo 'P1 1st sector:{:11.0f}' >> "$LOG"
+echo 'P2 1st Sector:{:11.0f}' >> "$LOG"
+echo '  Last Sector:{:11.0f}' >> "$LOG"
+echo '""".format(' >> "$LOG"
+echo 'p2size,' >> "$LOG"
+echo 'mystery,' >> "$LOG"
+echo 'p1first,' >> "$LOG"
+echo 'p2first,' >> "$LOG"
+echo 'p2last,' >> "$LOG"
+echo '))' >> "$LOG"
 
