@@ -8,6 +8,7 @@
 declare SRC="/Downloads/ph-w-books2shrink.img"  # source image
 declare SC="/Downloads/shrink-candidate.img"  # sacrificial copy
 declare SHRUNK="/Downloads/shrunk.img"  # name for end product
+declare ZIPPED="/Downloads/shrunk.zip"  # for distribution
 
 declare DATESTAMP="`date '+%y%m%d%H%M'`"
 declare TODO="todo-${DATESTAMP}.txt"
@@ -170,6 +171,11 @@ printf \
 "to help get the image back onto an SD card. Look it\n" | tee -a $TODO
 printf \
 "over before using!!\n" | tee -a $TODO
+printf \
+"To distribute your new image file, you'll want to compress it:" \
+| tee =a $TODO
+printf "   $ zip -r %s %s" "$ZIPPED" "$SHRUNK" | tee -a $TODO
+
 printf \
 "\nHope this was successful and helpful. Have a nice day! :-)\n"
 printf \
