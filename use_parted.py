@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
-# File: getfromparted.py
+# File: use_parted.py
 
 """
 Usage:
-    sudo parted DEVICE unit 's' print | ./getfromparted.py
+    sudo parted DEVICE unit 's' print | ./use_parted.py
 
 Use in conjunction with GNU parted as above.
 Assume DEVICE has two partitions.
