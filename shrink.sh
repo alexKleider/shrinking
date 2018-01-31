@@ -11,7 +11,6 @@ declare SHRUNK="/Downloads/shrunk.img"  # name for end product
 
 declare DATESTAMP="`date '+%y%m%d%H%M'`"
 declare TODO="todo-${DATESTAMP}.txt"
-declare LOG="calc-${DATESTAMP}.py"
 
 # Usage:
 #   sudo ./shrink.sh  # takes <4 minutes (on my machine)
@@ -41,7 +40,7 @@ MYSTERY=0   # to check by how much we are short.
 # "EXT4-fs (sdc2): mounted filesystem with ordered data mode. \
 # Opts: (null)"
 
-BEGINTIME="`date '+%y-%m-%d %H:%M'`"
+BEGINTIME="`date '+%H:%M'`"
 
 printf \
 "\n\n#####\nScript: shrink.sh  Beginning: %s\n#####\n" \
@@ -58,12 +57,12 @@ LOOPDEV=`losetup -f`  # Expect it to be /dev/loop0
 PARTITION=${LOOPDEV}p2
 printf " => %s; its 2nd partition is %s.\n" "$LOOPDEV" "$PARTITION"
 
-BEGIN_COPY="`date '+%y-%m-%d %H:%M'`"
+BEGIN_COPY="`date '+%H:%M'`"
 printf "Copy %s to %s...\n...starting at %s (expect 3+minutes)...\n" \
 "$SRC"  "$SC" "${BEGIN_COPY}"
 # ... to leave original undisturbed.
 cp $SRC $SC
-printf "\nCopy completed at %s\n" "`date '+%y-%m-%d %H:%M'`"
+printf "\nCopy completed at %s\n" "`date '+%H:%M'`"
 printf "..having begun at %s\n" "$BEGIN_COPY"
 
 echo "Create a device for the image..."
@@ -123,7 +122,7 @@ declare -i TRUNC_SIZE=(P2_lastSECTOR+1)*512+MYSTERY
 # loopback device no longer needed.
 losetup -d $LOOPDEV
 
-printf "\nScript completed at %s\n" "`date '+%y-%m-%d %H:%M'`"
+printf "\nScript completed at %s\n" "`date '+%H:%M'`"
 printf   "... having begun at %s\n" "$BEGINTIME"
 
 printf "\nStill TO-DO:\n" | tee -a $TODO
@@ -131,7 +130,7 @@ printf "\nStill TO-DO:\n" | tee -a $TODO
 printf \
 "\n1. run sudo fdisk %s\n" $SC | tee -a $TODO
 printf \
-"(Be sure the last number in each of next 2 lines is the same.)" \
+"(Be sure the last number in each of next 2 lines is the same.)\n" \
  | tee -a $TODO
 printf \
 "  a. Check that the beginning sectors are %d and %d.\n" \
@@ -173,38 +172,7 @@ printf \
 printf \
 "\nHope this was successful and helpful. Have a nice day! :-)\n"
 printf \
-"PS: Check out %s for a synopsis. (Also %s.)\n" "$TODO" "$LOG"
+"PS: Check out %s for a synopsis. (Also %s.)n" "$TODO"
 printf \
 "PPS: Direct comments, criticisms, &c. to alex@kleider.ca\n"
-
-
-TIMESTAMP="`date '+%y-%m-%d %H:%M'`"
-echo "" >> "$LOG"
-echo "" >> "$LOG"
-
-echo "# Python code- dated $TIMESTAMP" >> "$LOG"
-echo "" >> "$LOG"
-echo "blk_count = $SIZE" >> "$LOG"
-echo "blk_size = $COUNT" >> "$LOG"
-echo "p2size = blk_count * blk_size" >> "$LOG"
-echo "p1first = $P1_1stSECTOR" >> "$LOG"
-echo "p2first = $P2_1stSECTOR" >> "$LOG"
-echo "p2last = (p2first -1) + p2size / 512" >> "$LOG"
-echo "mystery = $MYSTERY" >> "$LOG"
-echo "size = (p2last +1) * 512 + mystery" >> "$LOG"
-
-echo 'print("""' >> "$LOG"
-echo 'Regarding the second partition:' >> "$LOG"
-echo '         Size:{:11.0f}' >> "$LOG"
-echo '    Add extra:{:11.0f}' >> "$LOG"
-echo 'P1 1st sector:{:11.0f}' >> "$LOG"
-echo 'P2 1st Sector:{:11.0f}' >> "$LOG"
-echo '  Last Sector:{:11.0f}' >> "$LOG"
-echo '""".format(' >> "$LOG"
-echo 'p2size,' >> "$LOG"
-echo 'mystery,' >> "$LOG"
-echo 'p1first,' >> "$LOG"
-echo 'p2first,' >> "$LOG"
-echo 'p2last,' >> "$LOG"
-echo '))' >> "$LOG"
 
