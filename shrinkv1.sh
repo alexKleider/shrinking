@@ -1,25 +1,18 @@
 #!/bin/bash
 
-# File: shrink.sh
-
-### First be sure the following is what you want:
-### Especially the first one!!!
-
-declare SRC="/Downloads/ph-w-books2shrink.img"  # source image
-declare SC="/Downloads/shrink-candidate.img"  # sacrificial copy
-declare SHRUNK="/Downloads/shrunk.img"  # name for end product
-declare ZIPPED="/Downloads/shrunk.zip"  # for distribution
-
-shopt -s -o nounset
-
-declare DATESTAMP="`date '+%y%m%d%H%M'`"
-declare TODO="todo-${DATESTAMP}.txt"
-declare LOG="calc-${DATESTAMP}.py"
+# File: shrinkv1.sh
+# Uses GNU parted to deal with partitions.
 
 # Usage:
 #   sudo ./shrink.sh
 
+# Depends on 'use_dumpe2fs.py' and 'get_parted_info.py'.
 # takes <4 minutes (on my machine)
+
+# Before embarking, that is to say, before you `dd` your SD Card to
+# the image, you might want to add a readme file to the root
+# file system- the file readme2add is provided as a template.
+# Be sure the partitions are all unmounted before the `dd`.
 
 # Steps:
 #  1. Create a sacrificial copy of the image file
@@ -28,27 +21,38 @@ declare LOG="calc-${DATESTAMP}.py"
 # copy of) the image and announce its partitions to the OS.
 #  3. Check the second partition's file system as a prelude to...
 #  4. Resize the second partition's file system to the minimum.
-#  5. Discover the second partition's Block count and Block size
-# using ./use_dumpe2fs.py
+#  5. Discover the size of the now resized file system.
+# This step depends on ./use_dumpe2fs.py                ** py **
 #  6. Discover the partition table (number and begin & end sectors
 # for each of the two partitions.)
-#  7. Change the second partition's end sector to match the size of its
-# resized file system.
+# This step depends on get_parted_info.py               ** py **
+#  7. Change the second partition's end sector to match the size of
+# its resized file system.
 #  8. Detach the loop device.
 #  9. Truncate (the sacrificial copy of) the image file.
 # 10. Provide suggested commands to run after the script ends
 # (assuming it ends successfully!)
 
-# Before embarking, that is to say, before you `dd` your SD Card to
-# the image, you might want to add a readme file to the root
-# file system- the file readme2add is provided as a template.
-# Be sure the partitions are all unmounted before the `dd`.
-
 # Progress reports as well as
 # Suggestions for what should still be done after the script ends
-# are provided to stdout and to a (time stamped) file (named by the
-# TODO variable.) Also have a look at the (also time stamped) file
-# (named by the LOG variable.)
+# are provided to stdout and to a (time stamped) file named by the
+# TODO variable.  Also have a look at the (also time stamped) file
+# named by the PY variable.
+
+shopt -s nounset
+
+declare DLDir="/Downloads"  # Download directory (containing image)
+declare SRC="${DLDir}/ph-w-books2shrink.img"  # source image
+declare SC="${DLDir}/shrink-candidate.img"  # sacrificial copy
+declare SHRUNK="${DLDir}/shrunk.img"  # name for end product
+declare ZIPPED="${DLDir}/shrunk.zip"  # for distribution
+
+declare DATESTAMP="`date '+%y%m%d%H%M'`"
+declare todo="todo"
+declare calc="calc"
+declare TODO="${todo}-${DATESTAMP}.txt"
+declare PY="${calc}-${DATESTAMP}.py"
+
 
 declare -i MYSTERY
 MYSTERY=0   # to add space if we are short.
@@ -71,9 +75,9 @@ printf \
 BEGIN_COPY="`date '+%H:%M'`"
 printf \
 "Copy %s to...\n... %s...\n...starting at %s (>3 min)...\n" \
-"$SRC"  "$SC" "${BEGIN_COPY}"
+"$SRC"  "$SC" "${BEGIN_COPY}" | tee -a $TODO
 # ... to leave original undisturbed.
-if cp $SRC $SC ; then
+if cp "$SRC" "$SC" ; then
     printf "\nCopy completed at %s\n" "`date '+%H:%M'`" \
     | tee -a $TODO
     printf "..having begun at %s\n" "$BEGIN_COPY"
@@ -108,9 +112,8 @@ fi
 printf "Request a new/free loopback device...\n"
 if LOOPDEV=`losetup -f` ; then
     printf \
-        " ... output of loosetup -f was %s which is being"\n \
+        " ... output of losetup -f was %s.\n" \
         "$LOOPDEV" | tee -a $TODO
-    printf "assigned to LOOPDEV.\n" | tee -a $TODO
 else
     ec="$?"
     printf \
@@ -149,25 +152,25 @@ else
 fi
 
 # Step 5.
-# Capture the block count and block size of the resized file
-# system on the second partition. The product = size in bytes.
+# Capture the block count and block size of the second partition's
+# resized file system to calculate it's new size.
 declare -a DATA=`dumpe2fs -h $PARTITION | \
     grep -e "Block count" -e "Block size" | \
     ./use_dumpe2fs.py`
-declare -i COUNT=${DATA[0]}
-declare -i SIZE=${DATA[1]}
+declare -i BLOCK_COUNT=${DATA[0]}
+declare -i BLOCK_SIZE=${DATA[1]}
 # ... so we can calculate the size (in bytes) of the 2nd partition:
-declare -i P2SIZE=COUNT*SIZE
+declare -i FS_SIZE=BLOCK_COUNT*BLOCK_SIZE
 
 # Progress report:
 printf \
 "Partition 2 file system size is now (%d * %d) %d bytes.\n" \
-"$COUNT" "$SIZE" "$P2SIZE" | tee -a $TODO
+"$BLOCK_COUNT" "$BLOCK_SIZE" "$FS_SIZE" | tee -a $TODO
 
 # Step 6.
 # Get the the number and sector boundaries of each of the partitions:
 # We only need to know the second partition beginning sector but
-# reporting (and checking) all of it might help debugging.
+# reporting (and checking) all of the data might help debugging.
 printf "Use GNU parted to list partitions...\n"
 printf "  $ parted %s unit 's' print\n" "$LOOPDEV " 
 printf "...and pipe it into ./get_parted_info.py\n"
@@ -197,54 +200,56 @@ if [ $P1 -eq 0 ]           || [ $P2 -eq 0 ] \
     exit 1
 fi
 
-# Setp 7.
+# Step 7.
 # Knowing 1.the size of the file system on the 2nd partition,
-# and 2.the second partition's beginning sector: we can
-# calculate a new ending sector:
-declare -i ENDING_SECTOR=(P2_1stSECTOR-1)+P2SIZE/512
-printf "About to run following command:\n"
-printf "  $ parted -s %s resizepart %s %s\n" \
-"$LOOPDEV" "$P2" "$ENDING_SECTOR" | tee -a $TODO
-printf "...to resize the second partition.\n" | tee -a $TODO
-
-#          script: never prompt the user
-#          v
-if parted -s $LOOPDEV resizepart $PART_NUMBER $ENDING_SECTOR; then
+# and     2.the second partition's beginning sector:
+# we can calculate a new ending sector:
+declare -i ENDING_SECTOR=(P2_1stSECTOR-1)+FS_SIZE/512
+printf \
+"About to run GNU parted to set final sector to %s... \n" \
+"$ENDING_SECTOR" | tee -a $TODO
+parted $LOOPDEV unit 's' resizepart "$PART_NUMBER" "${ENDING_SECTOR}" << HERE
+yes
+HERE
+es=$?
+if [ $es ] ; then
     printf \
     "Set the ending sector of the 2nd partition to %d.\n" \
-    "$ENDING_SECTOR" \
-    | tee -a $TODO
+    "$ENDING_SECTOR" | tee -a $TODO
 else
     printf "Error setting last sector of 2nd partition! \n" \
     | tee -a $TODO
     exit 1
 fi
 
+# We now have the info we need to calculate image size:
+declare -i TRUNC_SIZE=(ENDING_SECTOR+1)*512+MYSTERY
+
 # Step 8.
 printf "Detach the no longer needed loopback device.\n"
 losetup -d $LOOPDEV
 
 # Step 9.
-declare -i TRUNC_SIZE=(ENDING_SECTOR+1)*512+MYSTERY
-printf \
-"Calculate image size to be %d bytes.\n" \
-"$TRUNC_SIZE" | tee -a $TODO
+printf "Truncating %s...\n" "$SC" | tee -a $TODO
+printf "... to %d bytes: \n" "$TRUNC_SIZE" | tee -a $TODO
 
 if truncate --size=$TRUNC_SIZE $SC; then
-    printf \
-    "%s has been truncated to $d bytes.\n" \
+    printf "%s has been truncated to $d bytes.\n" \
     "$SC" "$TRUNC_SIZE" | tee -a $TODO
 else
     printf "Error truncating  %s! \n" "$SC" | tee -a $TODO
     exit 1
 fi
 
+### Job is done. Suggestions for tidying up follow.
+
 printf "\n\nStill TO-DO:\n" | tee -a $TODO
 
-printf "1. %s ...\n" "$SC" | tee -a $TODO
 printf \
-".. was created by root so chanage its ownership:\n" | tee -a $TODO
+"1. Change onership of files created by root:\n" | tee -a $TODO
 printf "   $ sudo chown \$USER:\$USER %s\n" "$SC" | tee -a $TODO
+printf "   $ sudo chown \$USER:\$USER %s\n" "$TODO" | tee -a $TODO
+printf "   $ sudo chown \$USER:\$USER %s\n" "$PY" | tee -a $TODO
 
 printf \
 "2. After shrinkage, it would be a good idea to\n" | tee -a $TODO
@@ -267,48 +272,50 @@ printf \
 
 printf \
 "4. To distribute your new image file, you'll want to compress it:\n" \
-| tee =a $TODO
+| tee -a $TODO
 printf "   $ zip -r %s %s\n" "$ZIPPED" "$SHRUNK" | tee -a $TODO
 
 printf \
 "\nHope this was successful and helpful. Have a nice day! :-)\n"
 printf \
-"PS: Check out %s for a synopsis. (Also %s.)\n" "$TODO" "$LOG"
+"PS: Check out %s for a synopsis. (Also %s.)\n" "$TODO" "$PY"
 printf \
 "PPS: Direct comments, criticisms, &c. to alex@kleider.ca\n"
 
 
 TIMESTAMP="`date '+%y-%m-%d %H:%M'`"
-echo "" >> "$LOG"
-echo "" >> "$LOG"
+echo "" >> "$PY"
 
-echo "# Python code- dated $TIMESTAMP" >> "$LOG"
-echo "" >> "$LOG"
-echo "blk_count = $SIZE" >> "$LOG"
-echo "blk_size = $COUNT" >> "$LOG"
-echo "p2size = blk_count * blk_size" >> "$LOG"
-echo "p1first = $P1_1stSECTOR" >> "$LOG"
-echo "p2first = $P2_1stSECTOR" >> "$LOG"
-echo "p2last = (p2first -1) + p2size / 512" >> "$LOG"
-echo "mystery = $MYSTERY" >> "$LOG"
-echo "size = (p2last +1) * 512 + mystery" >> "$LOG"
 
-echo 'print("""' >> "$LOG"
-echo 'Regarding the second partition:' >> "$LOG"
-echo '         Size:{:11.0f}' >> "$LOG"
-echo '    Add extra:{:11.0f}' >> "$LOG"
-echo 'P1 1st sector:{:11.0f}' >> "$LOG"
-echo 'P2 1st Sector:{:11.0f}' >> "$LOG"
-echo '  Last Sector:{:11.0f}' >> "$LOG"
-echo '""".format(' >> "$LOG"
-echo 'p2size,' >> "$LOG"
-echo 'mystery,' >> "$LOG"
-echo 'p1first,' >> "$LOG"
-echo 'p2first,' >> "$LOG"
-echo 'p2last,' >> "$LOG"
-echo '))' >> "$LOG"
+echo "# File created  $TIMESTAMP" >> "$PY"
+echo "# Python3 code"
+echo "" >> "$PY"
+echo "blk_count = $BLOCK_COUNT" >> "$PY"
+echo "blk_size = $BLOCK_SIZE" >> "$PY"
+echo "p2size = blk_count * blk_size" >> "$PY"
+echo "p1first = $P1_1stSECTOR" >> "$PY"
+echo "p2first = $P2_1stSECTOR" >> "$PY"
+echo "p2last = (p2first -1) + p2size / 512" >> "$PY"
+echo "mystery = $MYSTERY" >> "$PY"
+echo "size = (p2last +1) * 512 + mystery" >> "$PY"
+
+echo 'print("""' >> "$PY"
+echo 'Regarding the second partition:' >> "$PY"
+echo '         Size:{:11.0f}' >> "$PY"
+echo '    Add extra:{:11.0f}' >> "$PY"
+echo 'P1 1st sector:{:11.0f}' >> "$PY"
+echo 'P2 1st Sector:{:11.0f}' >> "$PY"
+echo '  Last Sector:{:11.0f}' >> "$PY"
+echo '""".format(' >> "$PY"
+echo 'p2size,' >> "$PY"
+echo 'mystery,' >> "$PY"
+echo 'p1first,' >> "$PY"
+echo 'p2first,' >> "$PY"
+echo 'p2last,' >> "$PY"
+echo '))' >> "$PY"
 
 
 printf "\nScript completed at %s\n" \
-"`date '+%%H:%M'`" | tee -a $TODO
+"`date '+%H:%M'`" | tee -a $TODO
 printf   "... having begun at %s\n" "$BEGINTIME" | tee -a $TODO
+
